@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api', // Vérifie que c'est bien le port de ton backend
+  baseURL: 'https://athleo-ai-repo45.onrender.com/api', // Vérifie que c'est bien le port de ton backend
 });
 
 // INTERCEPTEUR : Ajoute le token automatiquement à CHAQUE requête
@@ -17,5 +17,6 @@ api.interceptors.request.use(
     return Promise.reject(error);
   }
 );
+
 
 export default api;
