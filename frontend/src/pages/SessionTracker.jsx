@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function SessionTracker() {
-  const { t, i18n } = useTranslation(); // <--- ACTIVATION
+  const { t, i18n } = useTranslation();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,7 +16,6 @@ function SessionTracker() {
     return date.toISOString().split('T')[0];
   };
 
-  // Formatage dynamique selon la langue (FR ou EN)
   const formatDateDisplay = (date) => {
     const locale = i18n.language === 'fr' ? 'fr-FR' : 'en-US';
     return date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -84,7 +83,8 @@ function SessionTracker() {
       <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-gray-200 z-20 shadow-sm">
         <div className="max-w-xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between mb-2">
-                <Link to="/" className="p-2 rounded-full hover:bg-gray-100 transition">
+                {/* 👇 MODIFICATION ICI : Vers /dashboard */}
+                <Link to="/dashboard" className="p-2 rounded-full hover:bg-gray-100 transition">
                     ← {t('back')}
                 </Link>
                 <h1 className="text-lg font-bold text-black">{t('habit_tracker_title')}</h1>
