@@ -2,15 +2,15 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function Profile() {
   const { user, logout, loading } = useAuth();
-  const { t, i18n } = useTranslation(); // <--- ACTIVATION
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  
+   
   const [completedSessions, setCompletedSessions] = useState(0);
-  
+   
   const [passData, setPassData] = useState({ current: '', new: '', confirm: '' });
   const [message, setMessage] = useState({ text: '', type: '' });
   const [isEditingPass, setIsEditingPass] = useState(false);
@@ -79,7 +79,8 @@ function Profile() {
       
       {/* BOUTON RETOUR */}
       <div className="max-w-2xl mx-auto mb-6">
-        <Link to="/" className="text-gray-500 hover:text-black font-medium transition flex items-center gap-2">
+        {/* 👇 MODIFICATION ICI : Vers /dashboard */}
+        <Link to="/dashboard" className="text-gray-500 hover:text-black font-medium transition flex items-center gap-2">
           ← {t('back_dashboard')}
         </Link>
       </div>
