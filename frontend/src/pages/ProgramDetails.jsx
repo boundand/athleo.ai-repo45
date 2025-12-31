@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function ProgramDetails() {
   const { id } = useParams();
-  const { t } = useTranslation(); // <--- ACTIVATION
+  const { t } = useTranslation();
   const [programData, setProgramData] = useState(null);
   const [exercises, setExercises] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,13 +31,11 @@ function ProgramDetails() {
   const groupExercisesByDay = (exercisesList) => {
     const grouped = {};
     exercisesList.forEach(ex => {
-      // On normalise la clé du jour
       const dayName = ex.day.charAt(0).toUpperCase() + ex.day.slice(1);
       if (!grouped[dayName]) grouped[dayName] = [];
       grouped[dayName].push(ex);
     });
     
-    // Ordre des jours (on garde le français comme référence pour le tri API)
     const daysOrder = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
     return Object.keys(grouped)
       .sort((a, b) => daysOrder.indexOf(a) - daysOrder.indexOf(b))
@@ -73,7 +71,8 @@ function ProgramDetails() {
       {/* --- HEADER --- */}
       <div className="bg-white border-b border-gray-100 pb-8 pt-6 px-4">
         <div className="max-w-4xl mx-auto">
-            <Link to="/" className="text-sm text-gray-500 hover:text-blue-600 mb-6 inline-block font-medium">
+            {/* 👇 MODIFICATION ICI : Vers /dashboard */}
+            <Link to="/dashboard" className="text-sm text-gray-500 hover:text-blue-600 mb-6 inline-block font-medium">
                 {t('back_dashboard')}
             </Link>
             
