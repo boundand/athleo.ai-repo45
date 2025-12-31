@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function Analytics() {
-  const { t, i18n } = useTranslation(); // <--- ACTIVATION
+  const { t, i18n } = useTranslation();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +32,6 @@ function Analytics() {
   const stats = data?.global || { completed: 0, minutes: 0, rate: 0 };
   const chartData = data?.chart ? data.chart.slice(-7) : [];
 
-  // Mappage des jours pour la traduction
   const daysMap = {
       'Monday': t('lun'), 'Tuesday': t('mar'), 'Wednesday': t('mer'), 'Thursday': t('jeu'), 
       'Friday': t('ven'), 'Saturday': t('sam'), 'Sunday': t('dim')
@@ -43,7 +42,8 @@ function Analytics() {
       
       {/* HEADER */}
       <div className="max-w-2xl mx-auto mb-8 flex items-center gap-4">
-        <Link to="/" className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition">
+        {/* 👇 MODIFICATION ICI : Vers /dashboard */}
+        <Link to="/dashboard" className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition">
             ←
         </Link>
         <h1 className="text-3xl font-bold text-black">{t('my_stats')}</h1>
