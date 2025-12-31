@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function ProgramGenerator() {
   const navigate = useNavigate();
-  const { t } = useTranslation(); // <--- ACTIVATION
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -93,7 +93,8 @@ function ProgramGenerator() {
           navigate(`/program/${programId}`);
       } else {
           alert("Programme créé, mais impossible de l'ouvrir automatiquement.");
-          navigate('/');
+          // 👇 MODIFICATION ICI : Vers /dashboard
+          navigate('/dashboard');
       }
 
     } catch (error) {
