@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function Login() {
-  const { t } = useTranslation(); // <--- ACTIVATION
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -21,7 +21,8 @@ function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/');
+      // 👇 C'EST ICI QUE ÇA CHANGE : On va vers le dashboard après connexion
+      navigate('/dashboard');
     } catch (err) {
       setError(t('login_error'));
     } finally {
