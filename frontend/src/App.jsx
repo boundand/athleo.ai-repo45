@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 
 // Pages
+import LandingPage from './pages/LandingPage'; // ⚠️ Assure-toi d'avoir créé ce fichier
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -31,12 +32,16 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   return (
     <Routes>
-      {/* Routes Publiques */}
+      {/* --- ROUTES PUBLIQUES --- */}
+      {/* La racine / affiche la page de présentation */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
 
-      {/* Routes Protégées */}
-      <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      {/* --- ROUTES PROTÉGÉES --- */}
+      {/* Le Dashboard est maintenant sur /dashboard */}
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/program-generator" element={<ProtectedRoute><ProgramGenerator /></ProtectedRoute>} />
       <Route path="/program/:id" element={<ProtectedRoute><ProgramDetails /></ProtectedRoute>} />
@@ -46,7 +51,7 @@ function App() {
       <Route path="/ai-chat" element={<ProtectedRoute><AIChat /></ProtectedRoute>} />
       <Route path="/session-tracker" element={<ProtectedRoute><SessionTracker /></ProtectedRoute>} />
 
-      {/* Redirection par défaut */}
+      {/* Si la page n'existe pas, retour à l'accueil */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
