@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function AIChat() {
-  const { t } = useTranslation(); // <--- ACTIVATION
+  const { t } = useTranslation();
   const [messages, setMessages] = useState([
     { id: 1, text: t('initial_msg'), sender: 'bot' }
   ]);
@@ -40,7 +40,7 @@ function AIChat() {
         if (res.data.success) {
             setMessages(prev => [...prev, { 
                 id: Date.now() + 1, 
-                text: t('modify_success', { msg: res.data.message }), // Utilisation de paramètre
+                text: t('modify_success', { msg: res.data.message }),
                 sender: 'bot' 
             }]);
             setIsModifyMode(false);
@@ -70,7 +70,8 @@ function AIChat() {
       {/* HEADER */}
       <div className="bg-white p-4 shadow-sm flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
-            <Link to="/" className="text-2xl">←</Link>
+            {/* 👇 MODIFICATION ICI : Vers /dashboard */}
+            <Link to="/dashboard" className="text-2xl">←</Link>
             <div>
                 <h1 className="font-bold text-lg">{t('ai_coach_title')}</h1>
                 <p className="text-xs text-green-500 font-bold">{t('online_status')}</p>
