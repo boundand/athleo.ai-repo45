@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function Register() {
-  const { t } = useTranslation(); // <--- ACTIVATION
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -57,7 +57,8 @@ function Register() {
         level: formData.level,
         goals: formData.goals
       });
-      navigate('/');
+      // 👇 C'EST ICI QUE ÇA CHANGE : On va vers le dashboard après inscription
+      navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || t('error_occurred'));
     } finally {
@@ -162,7 +163,6 @@ function Register() {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  {/* On utilise une astuce pour traduire dynamiquement les clés de niveau */}
                   {level === 'debutant' ? t('beginner') : level === 'intermediaire' ? t('intermediate') : t('advanced')}
                 </button>
               ))}
@@ -178,7 +178,7 @@ function Register() {
                 <button
                   key={goal.id}
                   type="button"
-                  onClick={() => handleGoalToggle(goal.label)} // On garde la valeur interne (ex: gain_muscle)
+                  onClick={() => handleGoalToggle(goal.label)}
                   className={`px-4 py-3 rounded-xl font-medium transition-all ${
                     formData.goals.includes(goal.label)
                       ? 'bg-black text-white'
