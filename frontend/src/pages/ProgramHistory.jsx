@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { Link, useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next'; // <--- IMPORT
+import { useTranslation } from 'react-i18next';
 
 function ProgramHistory() {
-  const { t, i18n } = useTranslation(); // <--- ACTIVATION
+  const { t, i18n } = useTranslation();
   const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -32,7 +32,8 @@ function ProgramHistory() {
     try {
       await api.put(`/programs/${programId}/activate`);
       alert(t('program_activated'));
-      navigate('/'); 
+      // 👇 MODIFICATION ICI : Vers /dashboard
+      navigate('/dashboard'); 
     } catch (err) {
       alert(t('activation_error'));
     }
@@ -50,7 +51,8 @@ function ProgramHistory() {
         
         {/* BOUTON RETOUR */}
         <div className="mb-6">
-            <Link to="/" className="text-gray-500 hover:text-black font-medium transition flex items-center gap-2">
+            {/* 👇 MODIFICATION ICI : Vers /dashboard */}
+            <Link to="/dashboard" className="text-gray-500 hover:text-black font-medium transition flex items-center gap-2">
             ← {t('back_dashboard')}
             </Link>
         </div>
@@ -89,7 +91,7 @@ function ProgramHistory() {
                         <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase ${
                             prog.is_active ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600'
                         }`}>
-                            {t(prog.goal) || prog.goal} {/* Essaye de traduire l'objectif (ex: gain_muscle) sinon affiche le texte brut */}
+                            {t(prog.goal) || prog.goal}
                         </span>
                     </div>
                     </div>
