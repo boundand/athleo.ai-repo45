@@ -264,7 +264,7 @@ const LandingPage = () => {
           </div>
         </div>
         <div className="text-center pt-8 border-t border-white/5">
-          <p>&copy; 2024 Altheo AI. {t('footer_rights', 'Tous droits réservés.')}</p>
+          <p>&copy; 2026 Altheo AI. {t('footer_rights', 'Tous droits réservés.')}</p>
         </div>
       </footer>
 
