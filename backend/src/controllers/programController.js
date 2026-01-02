@@ -5,65 +5,61 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// --- LOGIQUE STRICTE POUR LE NOMBRE D'EXERCICES ---
+// Logique pour forcer le nombre d'exercices
 const getExerciseCount = (duration) => {
-    const d = parseInt(duration) || 60; // Par défaut 60 si erreur
+    const d = parseInt(duration) || 60;
     if (d <= 30) return "exactement 3 exercices";
     if (d <= 45) return "exactement 4 ou 5 exercices";
-    if (d <= 60) return "entre 6 et 7 exercices"; 
+    if (d <= 60) return "entre 6 et 7 exercices";
     if (d <= 90) return "entre 8 et 10 exercices";
     return "environ 10 exercices";
 };
 
-// --- 1. GÉNÉRER UN PROGRAMME (L'IA) ---
+// 1. GÉNÉRATION STRICTE
 exports.generateProgram = async (req, res) => {
   try {
     const { trainingDays, durationMinutes, equipment, equipmentDetails, level, goals, personalInfo } = req.body;
     const userId = req.user.id;
 
-    console.log("Génération lancée pour:", durationMinutes, "minutes");
+    console.log(">> Génération stricte lancée pour", userId);
 
-    // Calcul strict du nombre d'exos
     const exerciseCountTarget = getExerciseCount(durationMinutes);
 
     const prompt = `
-      Tu es un coach sportif expert et nutritionniste.
-      Crée un programme de musculation au format JSON STRICT.
+      Tu es un coach sportif expert.
+      Génère un programme de musculation au format JSON STRICT.
 
-      PROFIL:
-      - Objectif: ${goals.join(', ')}
-      - Niveau: ${level}
+      CONTEXTE:
       - Durée: ${durationMinutes} minutes
-      - Jours: ${trainingDays.join(', ')}
+      - Objectif: ${goals.join(', ')}
       - Matériel: ${equipment} (${equipmentDetails || 'Standard'})
-      - Infos: ${personalInfo.age} ans, ${personalInfo.weight}kg.
-      - Contraintes: ${personalInfo.constraints || 'Aucune'}
+      - Niveau: ${level}
+      
+      RÈGLES CRITIQUES (SANS EXCEPTION):
+      1. Tu DOIS générer ${exerciseCountTarget} par séance.
+      2. Tu DOIS fournir des conseils nutrition/progression/sécurité non vides.
+      3. Réponds UNIQUEMENT le JSON valide. Rien d'autre.
 
-      RÈGLES IMPÉRATIVES:
-      1. Pour ${durationMinutes} minutes, tu DOIS mettre ${exerciseCountTarget} par séance. C'est CRITIQUE.
-      2. Tu DOIS remplir les tableaux 'nutrition_tips', 'progression_tips' et 'safety_tips' avec au moins 3 conseils chacun. Ne laisse jamais vide.
-      3. Réponds UNIQUEMENT le JSON.
-
-      FORMAT JSON ATTENDU:
+      FORMAT ATTENDU:
       {
         "programName": "Nom du programme",
-        "description": "Description courte",
+        "description": "Description",
         "calories_target": 2500,
         "proteins_target": 160,
-        "nutrition_tips": ["Mange 2g de protéines par kg", "Bois 3L d'eau", "Privilégie les glucides complexes"],
-        "progression_tips": ["Augmente la charge de 2kg chaque semaine", "Note tes performances"],
-        "safety_tips": ["Échauffement articulaire 5min obligatoire", "Garde le dos droit"],
+        "nutrition_tips": ["Conseil 1", "Conseil 2", "Conseil 3"],
+        "progression_tips": ["Conseil 1", "Conseil 2"],
+        "safety_tips": ["Conseil 1", "Conseil 2"],
         "schedule": [
           {
             "day": "Lundi",
             "exercises": [
               {
-                "name": "Squat",
+                "name": "Exercice",
                 "sets": "4",
                 "reps": "10",
-                "rest": "90",
+                "rest": "60",
                 "tempo": "2-0-2-0",
-                "tips": "Pousse les genoux vers l'extérieur"
+                "tips": "Conseil technique"
               }
             ]
           }
@@ -82,16 +78,22 @@ exports.generateProgram = async (req, res) => {
     try {
         aiResponse = JSON.parse(completion.choices[0].message.content);
     } catch (e) {
-        console.error("Erreur parsing JSON IA", e);
-        return res.status(500).json({ error: "Erreur de format IA" });
+        console.error("ERREUR CRITIQUE: L'IA a renvoyé un format invalide.");
+        // ICI : On arrête tout. Pas de programme poubelle.
+        return res.status(500).json({ error: "L'IA a échoué à générer un programme valide. Veuillez réessayer." });
     }
 
-    // Sécurités pour éviter les champs vides dans le Dashboard
-    const nutritionInfo = aiResponse.nutrition_tips?.length > 0 ? aiResponse.nutrition_tips : ["Hydratation importante", "Protéines à chaque repas", "Légumes à volonté"];
-    const progressionInfo = aiResponse.progression_tips?.length > 0 ? aiResponse.progression_tips : ["Surcharge progressive", "Noter ses charges"];
-    const safetyInfo = aiResponse.safety_tips?.length > 0 ? aiResponse.safety_tips : ["Échauffement obligatoire", "Stop si douleur"];
+    // Validation supplémentaire : Si le planning est vide, on rejette.
+    if (!aiResponse.schedule || aiResponse.schedule.length === 0) {
+        return res.status(500).json({ error: "L'IA a généré un programme vide. Annulation." });
+    }
 
-    // Insertion BDD
+    // Sécurités pour les conseils (pour éviter l'affichage vide, mais basé sur la réponse IA)
+    const nutritionInfo = aiResponse.nutrition_tips || ["Mangez équilibré"];
+    const progressionInfo = aiResponse.progression_tips || ["Surcharge progressive"];
+    const safetyInfo = aiResponse.safety_tips || ["Échauffement obligatoire"];
+
+    // Insertion BDD (Seulement si tout est OK)
     const programResult = await db.query(
       `INSERT INTO programs (
         user_id, name, description, duration_minutes, level, goal, 
@@ -102,13 +104,13 @@ exports.generateProgram = async (req, res) => {
        RETURNING id`,
       [
         userId,
-        aiResponse.programName || "Programme Personnalisé",
-        aiResponse.description || "Votre programme sur mesure",
+        aiResponse.programName,
+        aiResponse.description,
         durationMinutes,
         level,
         goals[0],
-        aiResponse.calories_target || 2000,
-        aiResponse.proteins_target || 150,
+        aiResponse.calories_target,
+        aiResponse.proteins_target,
         JSON.stringify(nutritionInfo),
         JSON.stringify(progressionInfo),
         JSON.stringify(safetyInfo),
@@ -117,7 +119,7 @@ exports.generateProgram = async (req, res) => {
 
     const programId = programResult.rows[0].id;
 
-    // Désactiver les anciens
+    // Désactiver les anciens programmes
     await db.query(`UPDATE programs SET is_active = false WHERE user_id = $1 AND id != $2`, [userId, programId]);
 
     // Insérer les exercices
@@ -146,15 +148,35 @@ exports.generateProgram = async (req, res) => {
     res.json({ success: true, programId: programId });
 
   } catch (error) {
-    console.error("Erreur serveur generation:", error);
-    res.status(500).json({ error: "Erreur serveur lors de la génération" });
+    console.error("Erreur Serveur:", error);
+    res.status(500).json({ error: "Erreur technique lors de la génération." });
   }
 };
 
-// --- 2. RÉCUPÉRER UN PROGRAMME PAR ID ---
-exports.getProgramById = async (req, res) => {
+// 2. LISTE HISTORIQUE
+exports.getProgramHistory = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await db.query('SELECT * FROM programs WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Erreur serveur" });
+    }
+};
+
+// 3. TOUS LES PROGRAMMES (Alias pour éviter l'erreur 404/Undefined)
+exports.getPrograms = async (req, res) => {
+    return exports.getProgramHistory(req, res);
+};
+
+// 4. DÉTAILS D'UN PROGRAMME
+exports.getProgramDetails = async (req, res) => {
     try {
         const { id } = req.params;
+        // Vérifions d'abord si c'est bien un ID numérique (évite crash si 'history' passe ici par erreur)
+        if (isNaN(id)) return res.status(400).json({ error: "ID invalide" });
+
         const programRes = await db.query('SELECT * FROM programs WHERE id = $1', [id]);
         
         if (programRes.rows.length === 0) {
@@ -173,26 +195,7 @@ exports.getProgramById = async (req, res) => {
     }
 };
 
-// --- 3. RÉCUPÉRER L'HISTORIQUE ---
-exports.getHistory = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const result = await db.query('SELECT * FROM programs WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
-        res.json(result.rows);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Erreur serveur" });
-    }
-};
-
-// --- 4. RÉCUPÉRER TOUS LES PROGRAMMES (C'est celle-ci qui manquait !) ---
-// Souvent utilisée par la route '/'
-exports.getAllPrograms = async (req, res) => {
-    // On renvoie la même chose que l'historique pour éviter les erreurs
-    return exports.getHistory(req, res);
-};
-
-// --- 5. ACTIVER UN PROGRAMME ---
+// 5. ACTIVER UN PROGRAMME
 exports.activateProgram = async (req, res) => {
     try {
         const { id } = req.params;
@@ -205,5 +208,22 @@ exports.activateProgram = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Erreur serveur" });
+    }
+};
+
+// 6. SUPPRIMER UN PROGRAMME
+exports.deleteProgram = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        // On supprime d'abord les exercices (FK constraint) ou on laisse le CASCADE faire si configuré
+        await db.query('DELETE FROM exercises WHERE program_id = $1', [id]);
+        await db.query('DELETE FROM programs WHERE id = $1 AND user_id = $2', [id, userId]);
+
+        res.json({ success: true, message: "Programme supprimé" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Erreur lors de la suppression" });
     }
 };
