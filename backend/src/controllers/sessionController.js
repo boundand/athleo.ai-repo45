@@ -1,13 +1,12 @@
 const db = require('../config/database');
 
-// 1. Récupérer les séances d'une date précise (UNIQUEMENT DU PROGRAMME ACTIF)
+// 1. Récupérer les séances d'une date précise + LE TRACKING (Les cases cochées)
 const getSessionsByDate = async (req, res) => {
   try {
     const { date } = req.params; // Format attendu : 2023-10-27
     const userId = req.user.id;
 
-    // MODIFICATION ICI : On fait un JOIN avec la table programs
-    // Et on ajoute la condition "AND p.is_active = true"
+    // A. Récupérer les sessions du programme actif
     const sessionsResult = await db.query(
       `SELECT s.* FROM sessions s
        JOIN programs p ON s.program_id = p.id
@@ -20,7 +19,7 @@ const getSessionsByDate = async (req, res) => {
 
     const sessions = sessionsResult.rows;
 
-    // Pour chaque session trouvée, on récupère ses exercices
+    // B. Pour chaque session, récupérer les exercices (Ton code original)
     for (let session of sessions) {
       const exercisesResult = await db.query(
         `SELECT * FROM exercises 
@@ -42,18 +41,43 @@ const getSessionsByDate = async (req, res) => {
       session.exercises = exercisesResult.rows;
     }
 
-    res.json({ sessions });
+    // C. --- NOUVEAU --- Récupérer le tracking (les cases cochées ce jour-là)
+    const trackingResult = await db.query(
+        `SELECT * FROM exercise_tracking 
+         WHERE user_id = $1 AND date = $2`,
+        [userId, date]
+    );
+
+    // D. Formater les données de tracking pour le frontend
+    const checkedSets = {};
+    const actualReps = {};
+
+    trackingResult.rows.forEach(row => {
+      // On formate la date pour être sûr qu'elle matche la clé du frontend (YYYY-MM-DD)
+      // On utilise 'date' qui vient des params pour être sûr du format string
+      const key = `${date}-${row.session_id}-${row.exercise_name}-${row.set_index}`;
+      
+      if (row.is_completed) checkedSets[key] = true;
+      if (row.actual_reps) actualReps[key] = row.actual_reps;
+    });
+
+    // On renvoie les sessions ET le progrès (tracking)
+    res.json({ 
+        sessions, 
+        progress: { checkedSets, actualReps } 
+    });
+
   } catch (error) {
     console.error("Erreur getSessionsByDate:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// 2. Valider (ou dévalider) une séance
+// 2. Valider (ou dévalider) une séance complète (Le gros bouton final)
 const toggleSessionComplete = async (req, res) => {
     try {
         const { id } = req.params;
-        const { is_completed } = req.body; // true ou false
+        const { is_completed } = req.body;
         const userId = req.user.id;
 
         await db.query(
@@ -68,4 +92,30 @@ const toggleSessionComplete = async (req, res) => {
     }
 };
 
-module.exports = { getSessionsByDate, toggleSessionComplete };
+// 3. --- NOUVEAU --- Sauvegarder une série spécifique (Le micro-tracking)
+const trackSet = async (req, res) => {
+    try {
+      const { date, sessionId, exerciseName, setIndex, isCompleted, actualReps } = req.body;
+      const userId = req.user.id;
+  
+      // Requête "UPSERT" : Insère si ça n'existe pas, sinon met à jour
+      // ON CONFLICT gère le cas où la ligne existe déjà pour ce user/date/exo/index
+      const query = `
+        INSERT INTO exercise_tracking (user_id, date, session_id, exercise_name, set_index, is_completed, actual_reps)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (user_id, date, exercise_name, set_index) 
+        DO UPDATE SET 
+          is_completed = EXCLUDED.is_completed, 
+          actual_reps = EXCLUDED.actual_reps;
+      `;
+  
+      await db.query(query, [userId, date, sessionId, exerciseName, setIndex, isCompleted, actualReps]);
+  
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Erreur trackSet:", error);
+      res.status(500).json({ error: "Erreur lors de la sauvegarde de la série" });
+    }
+};
+
+module.exports = { getSessionsByDate, toggleSessionComplete, trackSet };
