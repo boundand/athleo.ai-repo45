@@ -10,23 +10,10 @@ function SessionTracker() {
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState(null);
   
-  // --- 1. MÉMOIRE DES CASES COCHÉES (VALIDATION) ---
-  const [checkedSets, setCheckedSets] = useState(() => {
-    const saved = localStorage.getItem('checkedSets');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  // --- 2. MÉMOIRE DES REPS RÉELLES (SI ÉCHEC) ---
-  const [actualReps, setActualReps] = useState(() => {
-    const saved = localStorage.getItem('actualReps');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  // Sauvegarde automatique à chaque changement
-  useEffect(() => {
-    localStorage.setItem('checkedSets', JSON.stringify(checkedSets));
-    localStorage.setItem('actualReps', JSON.stringify(actualReps));
-  }, [checkedSets, actualReps]);
+  // On stocke les données localement pour l'affichage instantané
+  // MAIS on va aussi les envoyer au serveur
+  const [checkedSets, setCheckedSets] = useState({});
+  const [actualReps, setActualReps] = useState({});
 
   const formatDateForApi = (date) => {
     return date.toISOString().split('T')[0];
@@ -37,22 +24,32 @@ function SessionTracker() {
     return date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
   };
 
+  // Chargement des données
   useEffect(() => {
-    fetchSessions(currentDate);
-  }, [currentDate]);
+    const fetchSessions = async () => {
+        setLoading(true);
+        try {
+          const dateStr = formatDateForApi(currentDate);
+          const response = await api.get(`/sessions/date/${dateStr}`);
+          
+          const sessionData = response.data.sessions || [];
+          setSessions(sessionData);
 
-  const fetchSessions = async (date) => {
-    setLoading(true);
-    try {
-      const dateStr = formatDateForApi(date);
-      const response = await api.get(`/sessions/date/${dateStr}`);
-      setSessions(response.data.sessions || []);
-    } catch (error) {
-      console.error('Erreur chargement séances:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+          // Si le backend renvoie déjà des détails (ce qu'on va ajouter après), on les charge
+          // Sinon on laisse vide, ça se remplira quand tu cocheras
+          if (response.data.progress) {
+              setCheckedSets(response.data.progress.checkedSets || {});
+              setActualReps(response.data.progress.actualReps || {});
+          }
+
+        } catch (error) {
+          console.error('Erreur chargement:', error);
+        } finally {
+          setLoading(false);
+        }
+    };
+    fetchSessions();
+  }, [currentDate]);
 
   const changeDate = (days) => {
     const newDate = new Date(currentDate);
@@ -60,24 +57,62 @@ function SessionTracker() {
     setCurrentDate(newDate);
   };
 
-  // Action : Cocher/Décocher une série
-  const toggleSet = (sessionId, exerciseId, setIndex) => {
-    const key = `${sessionId}-${exerciseId}-${setIndex}`;
-    setCheckedSets(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
+  // --- LE CŒUR DU SYSTÈME ---
+
+  // 1. Sauvegarder une série (Cocher/Décocher)
+  const toggleSet = async (sessionId, exerciseName, setIndex) => {
+    const dateStr = formatDateForApi(currentDate);
+    // ⚠️ On inclut la DATE dans la clé pour éviter le bug de la semaine
+    const key = `${dateStr}-${sessionId}-${exerciseName}-${setIndex}`;
+    
+    // Mise à jour visuelle immédiate (Optimistic UI)
+    const newValue = !checkedSets[key];
+    setCheckedSets(prev => ({ ...prev, [key]: newValue }));
+
+    try {
+        // Envoi "silencieux" au serveur pour enregistrer
+        await api.post('/sessions/track-set', {
+            date: dateStr,
+            sessionId,
+            exerciseName,
+            setIndex,
+            isCompleted: newValue,
+            actualReps: actualReps[key] || null
+        });
+    } catch (error) {
+        console.error("Erreur de sauvegarde série", error);
+    }
   };
 
-  // Action : Noter les reps réelles
-  const handleRepsChange = (sessionId, exerciseId, setIndex, value) => {
-    const key = `${sessionId}-${exerciseId}-${setIndex}`;
-    setActualReps(prev => ({
-      ...prev,
-      [key]: value
-    }));
+  // 2. Sauvegarder les répétitions réelles (Quand on change le chiffre)
+  const handleRepsChange = (sessionId, exerciseName, setIndex, value) => {
+    const dateStr = formatDateForApi(currentDate);
+    const key = `${dateStr}-${sessionId}-${exerciseName}-${setIndex}`;
+    
+    setActualReps(prev => ({ ...prev, [key]: value }));
   };
 
+  // 3. Sauvegarder les reps quand on quitte la case (onBlur) pour éviter de spammer le serveur
+  const saveRepsOnBlur = async (sessionId, exerciseName, setIndex) => {
+      const dateStr = formatDateForApi(currentDate);
+      const key = `${dateStr}-${sessionId}-${exerciseName}-${setIndex}`;
+      const value = actualReps[key];
+
+      try {
+        await api.post('/sessions/track-set', {
+            date: dateStr,
+            sessionId,
+            exerciseName,
+            setIndex,
+            isCompleted: checkedSets[key] || false,
+            actualReps: value
+        });
+    } catch (error) {
+        console.error("Erreur sauvegarde reps", error);
+    }
+  };
+
+  // 4. Valider toute la séance
   const handleCompleteSession = async (session) => {
     setSubmittingId(session.id);
     try {
@@ -88,31 +123,29 @@ function SessionTracker() {
         prevSessions.map(s => s.id === session.id ? { ...s, is_completed: newStatus } : s)
       );
 
-      if(newStatus) {
-          alert(t('session_validated_alert'));
-      }
+      if(newStatus) alert(t('session_validated_alert'));
       
     } catch (error) {
-      console.error('Erreur validation:', error);
       alert(t('save_error'));
     } finally {
       setSubmittingId(null);
     }
   };
 
-  // Calcul de la progression
+  // Calcul progression
   const getProgress = (session) => {
       if (session.is_completed) return 100;
       if (!session.exercises || session.exercises.length === 0) return 0;
 
       let totalSets = 0;
       let completedSets = 0;
+      const dateStr = formatDateForApi(currentDate);
 
       session.exercises.forEach(exo => {
           const setsCount = parseInt(exo.sets) || 1;
           totalSets += setsCount;
           for(let i = 0; i < setsCount; i++) {
-              if (checkedSets[`${session.id}-${exo.id}-${i}`]) {
+              if (checkedSets[`${dateStr}-${session.id}-${exo.name}-${i}`]) {
                   completedSets++;
               }
           }
@@ -187,30 +220,29 @@ function SessionTracker() {
                   <p className="text-right text-xs mt-1 font-bold">{Math.round(getProgress(session))}%</p>
                 </div>
 
-                {/* Liste des Exercices DÉTAILLÉE */}
+                {/* Liste des Exercices */}
                 <div className="p-4 space-y-6">
                   {session.exercises && session.exercises.map((exo) => {
                     const setsCount = parseInt(exo.sets) || 1;
                     
                     return (
                       <div key={exo.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                         {/* Titre Exercice */}
                          <div className="mb-4 pb-2 border-b border-gray-200">
                             <h3 className="font-extrabold text-lg text-gray-900">{exo.name}</h3>
-                            <p className="text-xs text-gray-500 font-medium">Objectif : {exo.sets} séries × {exo.reps} reps • Repos : {exo.rest_seconds}s</p>
+                            <p className="text-xs text-gray-500 font-medium">{t('sets')}: {exo.sets} × {exo.reps} • {t('rest')}: {exo.rest_seconds}s</p>
                          </div>
 
-                         {/* LISTE DES SÉRIES (1 par 1) */}
                          <div className="space-y-3">
                              {Array.from({ length: setsCount }).map((_, index) => {
-                                 const key = `${session.id}-${exo.id}-${index}`;
+                                 // CLÉ UNIQUE INCLUANT LA DATE
+                                 const dateStr = formatDateForApi(currentDate);
+                                 const key = `${dateStr}-${session.id}-${exo.name}-${index}`;
                                  const isChecked = checkedSets[key];
                                  const savedReps = actualReps[key] || '';
                                  
                                  return (
                                      <div key={index} className={`flex flex-col p-3 rounded-xl transition-all ${isChecked ? 'bg-green-50 border border-green-200' : 'bg-white border border-gray-200'}`}>
                                          
-                                         {/* Ligne du haut : Titre + Checkbox */}
                                          <div className="flex items-center justify-between mb-2">
                                              <div className="flex items-center gap-3">
                                                  <span className="bg-black text-white w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold">
@@ -222,7 +254,7 @@ function SessionTracker() {
                                              </div>
                                              
                                              <button
-                                                onClick={() => !session.is_completed && toggleSet(session.id, exo.id, index)}
+                                                onClick={() => !session.is_completed && toggleSet(session.id, exo.name, index)}
                                                 disabled={session.is_completed}
                                                 className={`
                                                     w-8 h-8 rounded-full flex items-center justify-center transition-all
@@ -236,17 +268,17 @@ function SessionTracker() {
                                              </button>
                                          </div>
 
-                                         {/* Ligne du bas : Champ Input pour l'échec */}
                                          {!session.is_completed && (
                                             <div className="mt-1">
                                                 <p className="text-[10px] text-gray-400 mb-1 ml-1">
-                                                    T'as pas pu le compléter ? Met ici combien tu en as fait :
+                                                    {t('actual_reps_label') || "Réalisé :"}
                                                 </p>
                                                 <input 
                                                     type="number" 
-                                                    placeholder={isChecked ? "Validé !" : "Ex: 8"}
+                                                    placeholder={isChecked ? "OK" : "..."}
                                                     value={savedReps}
-                                                    onChange={(e) => handleRepsChange(session.id, exo.id, index, e.target.value)}
+                                                    onChange={(e) => handleRepsChange(session.id, exo.name, index, e.target.value)}
+                                                    onBlur={() => saveRepsOnBlur(session.id, exo.name, index)}
                                                     className="w-full text-xs bg-gray-50 border border-gray-200 rounded-lg p-2 focus:border-black focus:bg-white outline-none transition-colors"
                                                 />
                                             </div>
@@ -260,7 +292,6 @@ function SessionTracker() {
                   })}
                 </div>
 
-                {/* Bouton Final */}
                 <div className="p-4 pt-0 border-t border-gray-50 mt-2">
                   <button
                     onClick={() => handleCompleteSession(session)}
@@ -271,7 +302,7 @@ function SessionTracker() {
                         : 'bg-black text-white hover:bg-gray-900 shadow-xl shadow-black/20'
                     }`}
                   >
-                    {submittingId === session.id ? 'Sauvegarde en cours...' : session.is_completed ? t('cancel_validation') : t('validate_session')}
+                    {submittingId === session.id ? '...' : session.is_completed ? t('cancel_validation') : t('validate_session')}
                   </button>
                 </div>
 
