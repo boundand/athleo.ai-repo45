@@ -5,82 +5,93 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Fonction pour déterminer le nombre d'exercices selon la durée
+// --- LOGIQUE STRICTE POUR LE NOMBRE D'EXERCICES ---
 const getExerciseCount = (duration) => {
-    const d = parseInt(duration);
-    if (d <= 30) return "entre 3 et 4";
-    if (d <= 45) return "entre 5 et 6";
-    if (d <= 60) return "entre 6 et 8"; // 60 min = solide
-    if (d <= 90) return "entre 8 et 10";
-    return "environ 10";
+    const d = parseInt(duration) || 60; // Par défaut 60 si erreur
+    if (d <= 30) return "exactement 3 exercices";
+    if (d <= 45) return "exactement 4 ou 5 exercices";
+    if (d <= 60) return "entre 6 et 7 exercices"; 
+    if (d <= 90) return "entre 8 et 10 exercices";
+    return "environ 10 exercices";
 };
 
+// --- 1. GÉNÉRER UN PROGRAMME (L'IA) ---
 exports.generateProgram = async (req, res) => {
   try {
     const { trainingDays, durationMinutes, equipment, equipmentDetails, level, goals, personalInfo } = req.body;
     const userId = req.user.id;
 
-    // 1. Calculer combien d'exercices on veut VRAIMENT
+    console.log("Génération lancée pour:", durationMinutes, "minutes");
+
+    // Calcul strict du nombre d'exos
     const exerciseCountTarget = getExerciseCount(durationMinutes);
 
-    // 2. Construire le prompt pour l'IA (ORDRES STRICTS)
     const prompt = `
-      Agis comme un coach sportif expert et nutritionniste. Crée un programme de musculation JSON strict.
-      
-      PROFIL UTILISATEUR :
-      - Objectif : ${goals.join(', ')}
-      - Niveau : ${level}
-      - Durée séance : ${durationMinutes} minutes
-      - Jours d'entraînement : ${trainingDays.join(', ')}
-      - Matériel : ${equipment} (${equipmentDetails || 'Standard'})
-      - Infos perso : ${personalInfo.age} ans, ${personalInfo.weight}kg, ${personalInfo.height}cm.
-      - Contraintes : ${personalInfo.constraints || 'Aucune'}
+      Tu es un coach sportif expert et nutritionniste.
+      Crée un programme de musculation au format JSON STRICT.
 
-      RÈGLES STRICTES DE GÉNÉRATION :
-      1. Pour une séance de ${durationMinutes} minutes, tu DOIS générer ${exerciseCountTarget} exercices par jour.
-      2. Tu DOIS remplir les sections conseils (nutrition, progression, sécurité).
-      3. Le format de réponse doit être UNIQUEMENT du JSON valide, sans texte avant ni après.
+      PROFIL:
+      - Objectif: ${goals.join(', ')}
+      - Niveau: ${level}
+      - Durée: ${durationMinutes} minutes
+      - Jours: ${trainingDays.join(', ')}
+      - Matériel: ${equipment} (${equipmentDetails || 'Standard'})
+      - Infos: ${personalInfo.age} ans, ${personalInfo.weight}kg.
+      - Contraintes: ${personalInfo.constraints || 'Aucune'}
 
-      STRUCTURE JSON ATTENDUE :
+      RÈGLES IMPÉRATIVES:
+      1. Pour ${durationMinutes} minutes, tu DOIS mettre ${exerciseCountTarget} par séance. C'est CRITIQUE.
+      2. Tu DOIS remplir les tableaux 'nutrition_tips', 'progression_tips' et 'safety_tips' avec au moins 3 conseils chacun. Ne laisse jamais vide.
+      3. Réponds UNIQUEMENT le JSON.
+
+      FORMAT JSON ATTENDU:
       {
-        "programName": "Nom motivant du programme",
-        "description": "Description courte et motivante",
+        "programName": "Nom du programme",
+        "description": "Description courte",
         "calories_target": 2500,
         "proteins_target": 160,
-        "nutrition_tips": ["Conseil 1 (précis)", "Conseil 2", "Conseil 3"],
-        "progression_tips": ["Conseil surcharge progressive", "Conseil repos"],
-        "safety_tips": ["Conseil échauffement", "Conseil exécution"],
+        "nutrition_tips": ["Mange 2g de protéines par kg", "Bois 3L d'eau", "Privilégie les glucides complexes"],
+        "progression_tips": ["Augmente la charge de 2kg chaque semaine", "Note tes performances"],
+        "safety_tips": ["Échauffement articulaire 5min obligatoire", "Garde le dos droit"],
         "schedule": [
           {
             "day": "Lundi",
             "exercises": [
               {
-                "name": "Nom de l'exercice",
+                "name": "Squat",
                 "sets": "4",
-                "reps": "10-12",
+                "reps": "10",
                 "rest": "90",
                 "tempo": "2-0-2-0",
-                "tips": "Conseil technique court"
+                "tips": "Pousse les genoux vers l'extérieur"
               }
             ]
           }
-          // Répéter pour chaque jour demandé : ${trainingDays.join(', ')}
         ]
       }
     `;
 
-    // 3. Appel à OpenAI
     const completion = await openai.chat.completions.create({
       messages: [{ role: "system", content: prompt }],
-      model: "gpt-3.5-turbo-1106", // Modèle rapide et bon en JSON
+      model: "gpt-3.5-turbo-1106",
       response_format: { type: "json_object" },
       temperature: 0.7,
     });
 
-    const aiResponse = JSON.parse(completion.choices[0].message.content);
+    let aiResponse;
+    try {
+        aiResponse = JSON.parse(completion.choices[0].message.content);
+    } catch (e) {
+        console.error("Erreur parsing JSON IA", e);
+        return res.status(500).json({ error: "Erreur de format IA" });
+    }
 
-    // 4. Sauvegarde en Base de Données
-    // On sauvegarde d'abord le programme
+    // Sécurités pour éviter les champs vides dans le Dashboard
+    const nutritionInfo = aiResponse.nutrition_tips?.length > 0 ? aiResponse.nutrition_tips : ["Hydratation importante", "Protéines à chaque repas", "Légumes à volonté"];
+    const progressionInfo = aiResponse.progression_tips?.length > 0 ? aiResponse.progression_tips : ["Surcharge progressive", "Noter ses charges"];
+    const safetyInfo = aiResponse.safety_tips?.length > 0 ? aiResponse.safety_tips : ["Échauffement obligatoire", "Stop si douleur"];
+
+    // Insertion BDD
     const programResult = await db.query(
       `INSERT INTO programs (
         user_id, name, description, duration_minutes, level, goal, 
@@ -91,30 +102,26 @@ exports.generateProgram = async (req, res) => {
        RETURNING id`,
       [
         userId,
-        aiResponse.programName,
-        aiResponse.description,
+        aiResponse.programName || "Programme Personnalisé",
+        aiResponse.description || "Votre programme sur mesure",
         durationMinutes,
         level,
         goals[0],
-        aiResponse.calories_target,
-        aiResponse.proteins_target,
-        JSON.stringify(aiResponse.nutrition_tips),   // On force le JSON stringify
-        JSON.stringify(aiResponse.progression_tips), // Idem
-        JSON.stringify(aiResponse.safety_tips),      // Idem
+        aiResponse.calories_target || 2000,
+        aiResponse.proteins_target || 150,
+        JSON.stringify(nutritionInfo),
+        JSON.stringify(progressionInfo),
+        JSON.stringify(safetyInfo),
       ]
     );
 
     const programId = programResult.rows[0].id;
 
-    // 5. Sauvegarde des séances et exercices
-    // On désactive d'abord les anciens programmes actifs
+    // Désactiver les anciens
     await db.query(`UPDATE programs SET is_active = false WHERE user_id = $1 AND id != $2`, [userId, programId]);
 
-    // Boucle sur les jours
+    // Insérer les exercices
     for (const daySchedule of aiResponse.schedule) {
-        // Création de la séance (optionnel si tu stockes tout dans exercices, mais propre pour le calendrier)
-        // Ici on va directement insérer les exercices liés au programme et au jour
-        
         let orderIndex = 1;
         for (const exo of daySchedule.exercises) {
             await db.query(
@@ -123,42 +130,28 @@ exports.generateProgram = async (req, res) => {
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                 [
                     programId,
-                    daySchedule.day.toLowerCase(), // Lundi, mardi...
+                    daySchedule.day.toLowerCase(),
                     exo.name,
                     exo.sets,
                     exo.reps,
-                    parseInt(exo.rest),
-                    exo.tempo,
-                    exo.tips,
+                    parseInt(exo.rest) || 60,
+                    exo.tempo || "2-0-2-0",
+                    exo.tips || "",
                     orderIndex++
                 ]
             );
         }
-
-        // Création des sessions dans le calendrier pour les 4 prochaines semaines
-        // (Logique simplifiée : on crée des sessions planifiées)
-        // Note : Cela dépend de comment tu gères ton calendrier, 
-        // mais pour l'instant on se concentre sur la création du programme.
     }
-    
-    // On génère aussi les sessions initiales dans la table sessions pour que le calendrier ne soit pas vide
-    // (Tu as peut-être une fonction séparée pour ça, mais voici un basique)
-    const startDate = new Date();
-    // ... Logique de peuplement du calendrier si nécessaire ...
 
-    res.json({ 
-        success: true, 
-        programId: programId,
-        message: "Programme généré avec succès" 
-    });
+    res.json({ success: true, programId: programId });
 
   } catch (error) {
-    console.error("Erreur génération programme:", error);
-    res.status(500).json({ error: "Erreur lors de la génération. Veuillez réessayer." });
+    console.error("Erreur serveur generation:", error);
+    res.status(500).json({ error: "Erreur serveur lors de la génération" });
   }
 };
 
-// Récupérer un programme complet
+// --- 2. RÉCUPÉRER UN PROGRAMME PAR ID ---
 exports.getProgramById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -180,7 +173,7 @@ exports.getProgramById = async (req, res) => {
     }
 };
 
-// Récupérer l'historique
+// --- 3. RÉCUPÉRER L'HISTORIQUE ---
 exports.getHistory = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -192,7 +185,14 @@ exports.getHistory = async (req, res) => {
     }
 };
 
-// Activer un programme
+// --- 4. RÉCUPÉRER TOUS LES PROGRAMMES (C'est celle-ci qui manquait !) ---
+// Souvent utilisée par la route '/'
+exports.getAllPrograms = async (req, res) => {
+    // On renvoie la même chose que l'historique pour éviter les erreurs
+    return exports.getHistory(req, res);
+};
+
+// --- 5. ACTIVER UN PROGRAMME ---
 exports.activateProgram = async (req, res) => {
     try {
         const { id } = req.params;
